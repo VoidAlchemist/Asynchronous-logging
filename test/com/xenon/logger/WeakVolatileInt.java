@@ -77,8 +77,8 @@ public class WeakVolatileInt {
     }
 
     /**
-     * Compare & Swap function. Note that it's a joke, as I rewrote the CAS myself. CAS is based on a hardware-level
-     * instruction, so writing it in Java makes it completely wrong. Possibility of A-B-A problem.
+     * Compare & Swap function. Note that it's a joke, as I rewrote the CAS myself. CAS is based on hardware-level
+     * instructions, so writing it in plain Java sounds wrong. Plenty of races possible.
      * Plus, AtomicInteger uses native code for that, so don't use this method, seriously.
      * Use {@link #realCas(int, int)} instead.
      * @param expected expected value
