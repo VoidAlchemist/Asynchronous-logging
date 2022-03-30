@@ -16,7 +16,7 @@ public class AsynchronousDonut<E> {
 
     public AsynchronousDonut(int capacity){
         if (capacity <= 0 || (capacity & - capacity) != capacity)   // necessary for modulo capacity to be cheap
-            throw new IllegalArgumentException("capacity must be a multiple of 2");
+            throw new IllegalArgumentException("capacity must be a power of 2");
         data = new Object[capacity];
         this.capacity = capacity;
         modulo = capacity - 1;
@@ -35,14 +35,14 @@ public class AsynchronousDonut<E> {
         int realCursor = c;
 
         if (c >= capacity) {
-            realCursor &= modulo;    // x & (N-1) <=> x % N if N % 2 = 0
+            realCursor &= modulo;    // x & (N-1) <=> x % N if N is power of 2
             head.realCas(c, realCursor);  // threads may help each other on this
         }
 
         data[realCursor] = obj;
 
-        if (data[realCursor + 1] != null)   // overwrite case.
-            tail.fetchAndAdd(1);    // we must move tail along. this line is not consistent
+        if (data[realCursor + 1] != null)   // overwrite case
+            tail.fetchAndAdd(1);    // we must move tail along
     }
 
     @SuppressWarnings("unchecked")
