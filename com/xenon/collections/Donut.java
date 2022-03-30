@@ -8,14 +8,16 @@ import java.util.Queue;
 @SuppressWarnings({"unused", "unchecked"})
 public class Donut<E> implements Queue<E> {
 
-    private final E[] data;
-    private final int capacity;
-    private int size, addIndex, getIndex;
+    private final Object[] data;
+    private final int capacity, modulo;
+    private int size, head, tail;
 
     public Donut(int capacity){
-        assert capacity >= 0 : "Don't set a negative capacity! Poor donut.";
+        if (capacity <= 0 || (capacity & - capacity) != capacity)
+            throw new IllegalArgumentException("Donut's capacity must be a power of 2. Given "+capacity);
+        modulo = capacity - 1;
         this.capacity = capacity;
-        data = (E[]) new Object[capacity];
+        data = new Object[capacity];
     }
 
 
@@ -31,7 +33,7 @@ public class Donut<E> implements Queue<E> {
 
     @Override
     public boolean contains(Object o) {
-        for (E e : data)
+        for (var e : data)
             if (e == o || (o instanceof String && e.equals(o)))
                 return true;
         return false;
@@ -39,7 +41,7 @@ public class Donut<E> implements Queue<E> {
 
     @Override
     public Iterator<E> iterator() {
-        return (Iterator<E>) Arrays.asList(toArray());
+        return (Iterator<E>) Arrays.asList((E[])toArray());
     }
 
     @Override
@@ -50,8 +52,8 @@ public class Donut<E> implements Queue<E> {
     @Override
     public <T> T[] toArray(T[] a) {
         int j = 0;
-        for (int i=0; i < capacity; i++){
-            E e = data[i];
+        for (int i = 0; i < capacity; i++){
+            Object e = data[i];
             if (e != null) {
                 a[j] = (T) e;
                 ++j;
@@ -62,28 +64,28 @@ public class Donut<E> implements Queue<E> {
 
     @Override
     public boolean add(E e) {
-        addIndex %= capacity;
+        head &= modulo;
         boolean overwrote = false;
-        E old = data[addIndex];
-        data[addIndex] = e;
+        Object old = data[head];
+        data[head] = e;
         if (old == null)
             ++size;
         else{
-            ++getIndex;
+            ++tail;
             overwrote = true;
         }
 
-        ++addIndex;
+        ++head;
         return overwrote;
     }
 
     @Override
     public boolean offer(E e) {
-        addIndex %= capacity;
-        E old = data[addIndex];
+        head &= modulo;
+        Object old = data[head];
         if (old == null){
-            data[addIndex] = e;
-            ++addIndex;
+            data[head] = e;
+            ++head;
             ++size;
             return true;
         }else{
@@ -93,10 +95,10 @@ public class Donut<E> implements Queue<E> {
 
     @Override
     public E remove() {
-        getIndex %= capacity;
-        E removed = data[getIndex];
-        data[getIndex] = null;
-        ++getIndex;
+        tail &= modulo;
+        E removed = (E) data[tail];
+        data[tail] = null;
+        ++tail;
         return removed;
     }
 
@@ -107,7 +109,7 @@ public class Donut<E> implements Queue<E> {
 
     @Override
     public E element() {
-        return data[getIndex %= capacity];
+        return (E) data[tail &= modulo];
     }
 
     @Override
@@ -127,7 +129,7 @@ public class Donut<E> implements Queue<E> {
 
     @Override
     public boolean containsAll(Collection<?> c) {
-        for (Object e : c)
+        for (var e : c)
             if (!contains(e))
                 return false;
         return true;
@@ -162,9 +164,9 @@ public class Donut<E> implements Queue<E> {
 
     @Override
     public void clear() {
-        for (int i=0; i < capacity; i++)
+        for (int i = 0; i < capacity; i++)
             data[i] = null;
-        size = getIndex = addIndex = 0;
+        size = tail = head = 0;
     }
 
     @Override
