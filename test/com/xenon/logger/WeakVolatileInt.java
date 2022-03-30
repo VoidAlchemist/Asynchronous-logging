@@ -67,6 +67,12 @@ public class WeakVolatileInt {
         // Sadly, Java only implements a load-store against load-store, and not just store against load-store.
         // so we use fullFence.
     }
+    
+    public int get(){
+        int temp = value;
+        VarHandle.acquireFence();   // load-store barrier. Prevents jumping in the future.
+        return value;
+    }
 
     public int getVolatile(){
 
