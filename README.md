@@ -5,4 +5,4 @@ It's been several months since I started, and I got to say this was not logging 
 
 ```test``` package only contains an attempt to optimize memory barriers for volatile integer. Sadly, in the end, it pretty much looks like a rip-off of LMAX Disruptor's ```Sequence```.
 
-See ```BlockingTorus``` if you seek performances. It uses a simple spinlock to lock critical sections. A non-blocking version is planned by mixing it with the usual fetch&Add logic for head and tail indexing, though we'll lose some of the safety we currently have especially consumer-producer race conditions. 
+See ```BlockingTorus``` if you seek performances. It uses a simple spinlock to lock critical sections. A non-blocking version is planned by mixing it with the usual fetch&Add logic for head and tail indexing, though we'll lose some of the safety we currently have, especially with a lot more consumer-producer race conditions. 
