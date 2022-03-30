@@ -18,7 +18,7 @@ public class BlockingDonut<E> {
 
     public BlockingDonut(int capacity){
         if (capacity <= 0 || (capacity & - capacity) != capacity)   // necessary for modulo capacity to be cheap
-            throw new IllegalArgumentException("capacity must be a multiple of 2");
+            throw new IllegalArgumentException("capacity must be a power of 2");
         data = new Object[capacity];
         this.capacity = capacity;
         modulo = capacity - 1;
