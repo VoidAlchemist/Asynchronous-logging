@@ -5,4 +5,5 @@ It's been several months since I started, and I got to say this was not logging 
 
 ```test``` package only contains an attempt to optimize memory barriers for volatile integer. Sadly, in the end, it pretty much looks like a rip-off of LMAX Disruptor's ```Sequence```.
 
-See ```BlockingTorus``` if you seek performances. It uses a simple spinlock to lock critical sections. A non-blocking version is planned by mixing it with the usual fetch&Add logic for head and tail indexing, though we'll lose some of the safety we currently have, especially with a lot more consumer-producer race conditions. 
+See ```BlockingTorus``` if you seek performances. It uses a simple spinlock to lock critical sections.
+See ```AsyncTorus``` if you seek every more performances. With the usual fetch&Add logic, it allows lock-free interactions between producers and the data structure. The only drawback with the fetch&Add is that some race condition may occur when N threads attempt to write at the same time, N being more than the ring buffer's capacity. An older write may void a younger one, though in this case, we can barely say which one is older. But anyway, the buffer capacity should be set according to the number of threads that will log.
