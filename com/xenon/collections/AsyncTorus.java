@@ -8,7 +8,8 @@ import java.util.function.Consumer;
 
 /**
  * Ring buffer is too long so named it torus, though it's nothing 3-dimensional.
- * A {@link SpinLock} object is used to lock critical sections (basically mutexes without context-switching).
+ * Lock-free nature is provided by fetch&Add logic in {@link #offer(T)}.
+ * Here, we get rid of all possible race conditions between producers and consumers.
  * @author Zenon
  * @param <T> the type of data the Torus will hold
  */
