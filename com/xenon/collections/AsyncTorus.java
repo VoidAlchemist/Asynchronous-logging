@@ -65,7 +65,7 @@ public class AsyncTorus<T> {
         int h = head.getAcquire();
         int h1 = h & modulo;
         if (h1 != h)
-            head.compareAndSet(h, h1);
+            head.compareAndSet(h, h1);  // threads may help each other on this, no need to rush
 
         int index = data[h1] == null ? 0 : h1;
         for (int i=index; i < index + modulo + 1;++i)
