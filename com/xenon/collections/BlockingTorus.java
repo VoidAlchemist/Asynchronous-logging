@@ -52,7 +52,7 @@ public class BlockingTorus<T> {
         h &= mod;
 
         Object o = data[h];
-        if (o == null){
+        if (o != null){ // overwrite case
             tail++;
         }
         data[h] = t;
@@ -77,7 +77,7 @@ public class BlockingTorus<T> {
         h &= mod;
 
         Object o = data[h];
-        if (o == null){
+        if (o != null){
             tail++;
         }
         data[h] = t;
