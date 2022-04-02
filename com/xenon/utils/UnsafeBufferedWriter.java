@@ -230,7 +230,7 @@ public class UnsafeBufferedWriter extends Writer {
     }
 
     @Override
-    public void close() throws IOException {
+    public void close() {
         // do nothing
     }
 
