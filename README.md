@@ -7,6 +7,15 @@ It's been several months since I started, and I got to say this was not logging 
 
 See ```BlockingTorus``` if you seek performances. It uses a simple spinlock to lock critical sections.
 
+## Lock-free and wait-free data structure
+
+The first version of this logger works thanks to the ```SpinLock``` class. While "asynchronous" doesn't mean "lock-free", I surely don't want to use locks anymore for logging. I tried once, but I must have missed something back then because one log instruction was taking in average 80 ms with 10 threads alive. At that point, I almost thought "why not just do a synchronous logger? like just play with nio in the caller thread".
+First of all, we ought to understand what are lock-free and wait-free algorithms.
+
+Definitions:
+- lock-free = at least one thread is making progress (or without mutexes, definition can vary). To simplify, we'll say it's without mutexes to avoid deadlocks. Typically, a SpinLock is considered lock-free.
+- wait-free = all threads are making progress. Now, that implies we can't just sit in a compare and swap loop doing nothing. In that sense, I always ask myself if fetch and add is really wait-free.
+
 Abbreviations:
 - FAA = fetch and add
 - CAS = compare and swap
@@ -122,3 +131,26 @@ void peek(Consumer<wrap_something> consumer)
 *Performance note: Padding could be added to ```con.xenon.logging.LogEvent``` around its fields to minimize false sharing occurrences.*
 
 *Final note: In general, keep in mind that lock-free, or even wait-free doesn't mean fast nor efficient as CAS and FAA have a heavy cost, like every volatile-related stuff. This should be quite visible with the pool structure producer-side-wise because a spin-lock implementation only requires a CAE loop and a volatile set to lock critical sections, whereas a lock-free implementation must do 1 FAA for head, a CAS on head for modulo max (though it can be done by some consumer), a volatile set on "dead", then a volatile read on "dead" of the next object to know if it should move tail along, and if so performs FAA on tail.*
+
+
+## Logging
+
+Here goes logging, finally. Not that there's much to say, though.
+One big thing that took me quite the time was making the logging thread a daemon. Indeed, in my early attempts to write an asynchronous logger, I quickly bumped into the need to make my thread automatically shuts down. Back in the day, I had to manually shut down IntelliJ each time since the logging thread was still there alive. I didn't immediatly think of daemons because for me it was restricted to HTTP requests and packets stuff, not such things as writing into file. So what's the solution then? The API's user's got to type "LogManager.shut()" at the end of his program?? That's way too dangerous.
+The only way to make a thread automatically shuts down when other "user threads" are dead is to make it a daemon. In Java, when all user threads are stopped, the JVM stops along with all the daemons. The problem with daemons is that they are interrupted by the JVM itself, ignoring finally blocks or any security net. So, on forums, you will see tons of people crying over not using daemons for IO and to use user threads instead. But then what? it's not like adding ```Runtime.getRuntime().addShutDownHook()``` will help since it's being called once all user threads stop.
+In the end, I made my thread a daemon. With great power comes great responsibility, I had to make the IO close quietly.
+Two major problems come when a daemon is shut down abruptly: 
+- no IO resource will get correctly closed.
+- any held lock won't get released.
+These two facts seem natural because the JVM is terminating, so no trade-off.
+But still, I don't want my thread to keep alive the JVM but I want it to close nicely.
+The solution is actually quite easy. I just had a shutdown hook to the runtime, thing that is actually useful when working with daemons (with user threads we go nowhere).
+```
+Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+    try{
+        Thread.sleep(100);
+        bufferedWriter.close();
+    } catch(Exception ignored) {}
+})};
+```
+In ```LogManager```, I am actually keeping open a BufferedWriter open all the time, instead of try-with-resources it each time I log, and I close safely after the daemons are shutdown. However, ```java.io.BufferedWriter``` methods are synchronized. That means that if my daemon is abruptly killed, I won't every be able to enter a critical section and close the buffer. So I rewrote ```BufferedWriter``` without locks, which is actually perfect for performances as well, since only the logging thread will be accessing it. See ```com.xenon.utils.UnsafeBufferedWriter```.
