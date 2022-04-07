@@ -7,13 +7,15 @@ It's been several months since I started, and I got to say this was not logging 
 
 See ```BlockingTorus``` if you seek performances. It uses a simple spinlock to lock critical sections.
 
+The following are a few notes about my fun little journey in the wait-free world, though it's practically become a blog.
+
 ## Lock-free and wait-free data structure
 
 The first version of this logger works thanks to the ```SpinLock``` class. While "asynchronous" doesn't mean "lock-free", I surely don't want to use locks anymore for logging. I tried once, but I must have missed something back then because one log instruction was taking in average 80 ms with 10 threads alive. At that point, I almost thought "why not just do a synchronous logger? like just play with nio in the caller thread".
 First of all, we ought to understand what are lock-free and wait-free algorithms.
 
 Definitions:
-- lock-free = at least one thread is making progress (or without mutexes, definition can vary). To simplify, we'll say it's without mutexes to avoid deadlocks. Typically, a SpinLock is considered lock-free.
+- lock-free = at least one thread is making progress (or without mutexes, definition can vary). To simplify, we'll say it's without mutexes for avoiding deadlocks. Typically, a SpinLock is considered lock-free.
 - wait-free = all threads are making progress. Now, that implies we can't just sit in a compare and swap loop doing nothing. In that sense, I always ask myself if fetch and add is really wait-free.
 
 Abbreviations:
@@ -44,7 +46,7 @@ T poll()
 The concurrent variant is more complicated:
 ```
 void add(T o)
-    int h = head.FAA();  // atomic version of LOAD head and then after LOAD head STORE head+1
+    int h = head.FAA();  // atomic version of LOAD head and then later LAOD head STORE head+1
     int h1 = h % max;
     
     if (h != h1)
@@ -52,7 +54,7 @@ void add(T o)
         // low priority. allows to not limit the number of transactions with the buffer to Integer.MAX_VALUE
     
     T old = data[h1];
-    data[h1] = o;  // here, we completely ignore when more than N add requests are executed 
+    data[h1] = o;  // here, we completely ignore when more than N threads add requests are executed 
     //"at the same time", N >= max. If data overwrite or race condition between threads     
     // that called add "at the same time" are not desired,
     // then another concurrent queue needs to be used specifically for overflow case.
@@ -72,9 +74,9 @@ T poll()
     data[t] = null;
     return result;
 ```
-As you can see, the concurrent version is a bit different, but thanks to the FAA atomic operation, things are quite clean. However, we completely skip the full buffer situation. While it is indeed much easier to handle that way, our data structure is in a way not usable at all. But eh, bit by bit, would you? Making a circular buffer wait-free is enough hard as it is right now. Though, I'm not that sure FAA is actually wait-free as it's usually just a CAS loop with n and n+1.
+As you can see, the concurrent version is a bit different, but thanks to the FAA atomic operation, things are quite clean. However, we completely skip the full buffer situation. While it is indeed much easier to handle that way, our data structure is in a way not usable at all. But eh, bit by bit, would you? Making a circular buffer wait-free is though enough as it is right now. Though, I'm not that sure FAA is actually wait-free as it's usually just a CAS loop with n and n+1.
 
-Anyway, in this concurrent version, we still have one major problem beside the overflow situation. It is that producers write to the array data to add their object. That alone is fine as we distribute a unique index to each producer (ignore overflow please). However, while consumers should ideally only be reading, they nonetheless try to write into the array the null pointer to signal they're done consuming an object. We absolutely need that mechanism, primordial for knowing whether the buffer has room, and the tail position. But then, that means we ought to make the entire array atomic, which will surely make our performances crumble, if it wasn't done before. For the sake of the algorithm correctness, I still wrote something like this algorithm in ```...```, nowhere actually. With these remarks in mind, note that ```AsyncTorus``` and ```AsyncDonut``` are not correct. Left them here, as they show different approaches to the problem but their algorithms are far from correct.
+Anyway, in this concurrent version, we still have one major problem beside the overflow situation. Indeed, producers write to the array data to add their object. That alone is fine as we distribute a unique index to each producer (ignore overflow please). However, while consumers should ideally only be reading, they nonetheless try to write into the array the null pointer to signal they're done consuming an object. We absolutely need that mechanism, primordial for knowing whether the buffer has room, and the tail position. But then, that means we ought to make the entire array atomic, which will surely make our performances crumble, if it wasn't done before. For the sake of the algorithm correctness, I still wrote something like this algorithm in ```...```, nowhere actually. With these remarks in mind, note that ```AsyncTorus``` and ```AsyncDonut``` are not correct. Left them here, as they show different approaches to the problem but their algorithms are far from correct.
 
 As a result, our current concurrent version should be linearizable, but has a lot of flaws, which is bad as we want correctness over speed (but speed still matters).
 But hold on! While this ring buffer thing is good for simple objects, if we want to pass, say 2-3 primitives or string, are we going to create a wrapper object, like a record every time we add something to the queue and then destroy it?? Doesn't it sound like a lot of unnecessary object creation? To me, re-creating wrappers and destroying them right after always calls for a pool. I mean, immutability is perfect for concurrency, but I want a correct **and** realistic java-ish algorithm.
@@ -123,9 +125,30 @@ void peek(Consumer<wrap_something> consumer)
     current.dead = true;
     consumer.accept(current);   // do something with fields.
     // sadly, we cannot convert the current.dead = true; and this line in one atomic operation,
-    // so this is probably still not correct...
+    // so this is still not correct...
     
 ```
+
+Wait, there is a huge problem with this implementation: it goes abnormally well! Indeed, unless you are researcher that works with wait-free stuff all day long, when you think your wait-free algorithm is correct, then it's not yet.
+
+Here, the deal is easy: our `update()` and `peek()` methods are not linearizable. Though I don't quite know myself what it means, here it's because we need at least 2 instructions to peek/update an object, `obj.dead = boolean` and `obj.setFields(newFields)`/`doStuffWithFields(obj)`.
+A simple timestamp example:
+
+**Assumptions and definitions:**
+
+Thread P is a producer.
+Thread C is a consumer.
+The ring buffer is full and P just starts overwritting. C tries to help.
+
+1. C claims the index of the oldest object, say at index N.
+2. P claims that very N index as it wants to write more. As the N object isn't dead, tail is incremented atomically, but too bad, C already got its ticket for N.
+3. C starts consuming. First calls `current.dead = true`.
+2. P starts producing. First calls `current.setFields(new_fields_values)`.
+3. C calls `consumer.accept(current)`.
+4. P calls `current.dead = false`.
+
+Now you ask, what's the effect extacly? Our algorithm isn't that stupid either so problems "only" arise when these 4 lines get interleaved.
+In this timestamp, C arrived a inch too late and the old data got overwrote. C did consume the freshly-set fields, yet `current.dead` is `false`.
 
 
 *Performance note: Padding could be added to ```con.xenon.logging.LogEvent``` around its fields to minimize false sharing occurrences.*
